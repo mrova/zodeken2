@@ -176,9 +176,9 @@ CODE;
         \$id = (int) \$model->get$primaryKeyCamelCase();
         
         if (0 === \$id) {
-            \$this->tableGateway->insert(\$model->getData());
+            \$this->tableGateway->insert(\$model->toArray());
         } else {
-            \$this->tableGateway->update(\$model->getData(), array('$primaryKey[0]' => \$id));
+            \$this->tableGateway->update(\$model->toArray(), array('$primaryKey[0]' => \$id));
         }
     }
 
