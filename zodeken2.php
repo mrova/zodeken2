@@ -1,10 +1,6 @@
 <?php
 
-/**
- * Zodeken2 - One-file Model/Mapper generator from database for Zend Framework 2.
- *
- * @author Thuan Nguyen <me@ndthuan.com>
- */
+$_SERVER['REQUEST_URI'] = '/';
 
 require 'init_autoloader.php';
 
@@ -113,42 +109,94 @@ MODULE;
         $modelName = $this->toCamelCase($table->getName());
 
         $primaryKey = array();
-        $foreignKeys = array();
+        $indexes = array();
         
         foreach ($table->getConstraints() as $constraint)
         {
             /* @var $constraint Zend\Db\Metadata\Object\ConstraintObject */
-            if ('PRIMARY KEY' === $constraint->getType()) {
+            
+            $constraintType = $constraint->getType();
+            
+            if ('PRIMARY KEY' === $constraintType) {
                 $primaryKey = $constraint->getColumns();
-            } elseif ('FOREIGN KEY' === $constraint->getType()) {
-                $foreignKeys += $constraint->getColumns();
             }
+            
+            $indexes[] = $constraint->getColumns();
         }
         
-        if (isset($foreignKeys[0]) > 0) {
-            $foreignKeyCode = array();
+        if (isset($indexes[0])) {
+            $indexCode = array();
             
-            foreach ($foreignKeys as $foreignKeyColumn)
-            {                
-                $foreignKeyColumnCamelCase = $foreignKeyColumnCamelCaseVar = $this->toCamelCase($foreignKeyColumn);
-                $foreignKeyColumnCamelCaseVar[0] = strtolower($foreignKeyColumnCamelCaseVar[0]);
+            foreach ($indexes as $index)
+            {
+                $camelCaseColumns = $index;
                 
-                $foreignKeyCode[] = <<<CODE
+                array_walk($camelCaseColumns, array($this, 'toCamelCase'));
+                
+                foreach ($camelCaseColumns as &$camelCaseColumn)
+                {
+                    $camelCaseColumn = $this->toCamelCase($camelCaseColumn);
+                }
+                
+                $vars = array();
+                
+                foreach ($camelCaseColumns as $var)
+                {
+                    $var[0] = strtolower($var[0]);
+                    $vars[] = $var;
+                }
+                
+                $functionNameResultSet = "get{$modelName}SetBy" . implode('And', $camelCaseColumns);
+                $functionNameResult = "get{$modelName}By" . implode('And', $camelCaseColumns);
+                $argList = array();
+                $varComments = array();
+                
+                foreach ($vars as $var)
+                {
+                    $argList[] = '$' . $var;
+                    $varComments[] = "     * @param mixed $$var";
+                    
+                }
+                $argList = implode(', ', $argList);
+                $varComments = implode("\n", $varComments);
+                
+                $where = array();
+                
+                foreach ($index as $offset => $indexColumn)
+                {
+                    $where[] = "'$indexColumn' => $$vars[$offset]";
+                }
+ 
+                $where = implode(",\n", $where);
+                $indexCode[] = <<<CODE
+
 
     /**
-     * @param mixed $$foreignKeyColumnCamelCaseVar
+     *
+$varComments
+     * @return $modelName
+     */
+    public function $functionNameResult($argList)
+    {
+        return \$this->tableGateway->select(array($where))->current();
+    }
+
+
+    /**
+     *
+$varComments
      * @return \Zend\Db\ResultSet\ResultSet
      */
-    public function get{$modelName}ResultSetBy$foreignKeyColumnCamelCase($$foreignKeyColumnCamelCaseVar)
+    public function $functionNameResultSet($argList)
     {
-        return \$this->tableGateway->select(array('$foreignKeyColumn' => $$foreignKeyColumnCamelCaseVar));
+        return \$this->tableGateway->select(array($where));
     }
 CODE;
             }
             
-            $foreignKeyCode = implode('', $foreignKeyCode);
+            $indexCode = implode('', $indexCode);
         } else {
-            $foreignKeyCode = '';
+            $indexCode = '';
         }
         
         if (count($primaryKey) == 1) {
@@ -161,11 +209,7 @@ CODE;
      */
     public function get$modelName(\$id)
     {
-        \$model = \$this->tableGateway->select(array('$primaryKey[0]' => (int) \$id))->current();
-        if (!\$model) {
-            throw new \Exception("Could not find row \$id");
-        }
-        return \$model;
+        return \$this->tableGateway->select(array('$primaryKey[0]' => \$id))->current();
     }
 
     /**
@@ -173,9 +217,9 @@ CODE;
      */
     public function save$modelName($modelName \$model)
     {
-        \$id = (int) \$model->get$primaryKeyCamelCase();
+        \$id = \$model->get$primaryKeyCamelCase();
         
-        if (0 === \$id) {
+        if (!\$id) {
             \$this->tableGateway->insert(\$model->toArray());
         } else {
             \$this->tableGateway->update(\$model->toArray(), array('$primaryKey[0]' => \$id));
@@ -191,7 +235,7 @@ CODE;
         if (\$model instanceof $modelName) {
             \$id = \$model->get$primaryKeyCamelCase();
         } else {
-            \$id = (int) \$model;
+            \$id = \$model;
         }
 
         \$this->tableGateway->delete(array('$primaryKey[0]' => \$id));
@@ -228,7 +272,7 @@ class {$modelName}Mapper implements ServiceLocatorAwareInterface
         \$this->tableGateway = \$tableGateway;
     }
 $mappingCode
-$foreignKeyCode
+$indexCode
 
     public function setServiceLocator(ServiceLocatorInterface \$serviceLocator)
     {
