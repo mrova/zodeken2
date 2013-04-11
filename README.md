@@ -13,6 +13,7 @@ Usage
 
 1. Put zodeken2.php to root directory of your project.
 
+```
 /your-project/
 ----/config/
 ----/data/
@@ -22,6 +23,7 @@ Usage
 ----/composer.json
 ----[...]
 ----/zodeken2.php <-- Put it here
+```
 
 2. Run `php zodeken2.php` in terminal. It will read your db configs and asks you for the module name. The 'php' command not found? Please install the php5-cli or php-cli for Linux or add the directory of your php.exe to your system path for Windows.
 
