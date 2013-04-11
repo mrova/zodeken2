@@ -1,5 +1,7 @@
 <?php
 
+error_reporting(E_ALL & ~E_NOTICE & ~E_USER_NOTICE);
+
 $_SERVER['REQUEST_URI'] = '/';
 
 require 'init_autoloader.php';
@@ -11,6 +13,7 @@ $zodeken2->run();
 
 class Zodeken2
 {
+
     /**
      *
      * @var Zend\Db\Adapter\Adapter
@@ -22,7 +25,7 @@ class Zodeken2
      * @var string
      */
     protected $moduleName;
-    
+
     /**
      *
      * @var string
@@ -30,13 +33,13 @@ class Zodeken2
     protected $workingDir;
 
     /**
-     * 
+     *
      * @param Zend\Mvc\Application $application
      */
     public function __construct(Zend\Mvc\Application $application, $workingDir)
     {
         $this->workingDir = $workingDir;
-        
+
         $this->dbAdapter = $application->getServiceManager()->get('Zend\Db\Adapter\Adapter');
 
         if (!$this->dbAdapter) {
@@ -45,7 +48,7 @@ class Zodeken2
     }
 
     /**
-     * 
+     *
      * @return Zend\Db\Metadata\Object\TableObject[]
      */
     protected function getTables()
@@ -57,124 +60,187 @@ class Zodeken2
 
     public function run()
     {
-        do {
+        echo "\n\nWARNING: please backup your existing code!!!\n\n";
+        do
+        {
             $moduleName = $this->prompt("Enter module name: ");
         } while ('' === $moduleName);
-        
+
         $this->moduleName = $moduleName;
 
         echo "Please wait...\n";
-        
-        $serviceFactories = array();
+
+        $serviceFactoryMethods = array();
 
         foreach ($this->getTables() as $table)
         {
             echo $table->getName(), "\n";
             $this->generateModel($table);
             $this->generateMapper($table);
-            
+
             $tableName = $table->getName();
             $modelName = $this->toCamelCase($tableName);
-            
-            $serviceFactories[] = <<<CODE
 
-                '$this->moduleName\\{$modelName}Mapper' =>  function(\$sm) {
-                    \$tableGateway = \$sm->get('$this->moduleName\\{$modelName}TableGateway');
-                    \$mapper = new \\$this->moduleName\Model\\$modelName\\{$modelName}Mapper(\$tableGateway);
-                    return \$mapper;
-                },
-                '$this->moduleName\\{$modelName}TableGateway' => function(\$sm) {
-                    \$dbAdapter = \$sm->get('Zend\Db\Adapter\Adapter');
-                    \$resultSetPrototype = new \Zend\Db\ResultSet\ResultSet();
-                    \$resultSetPrototype->setArrayObjectPrototype(new \\$this->moduleName\Model\\$modelName\\$modelName());
-                    return new \Zend\Db\TableGateway\TableGateway('$tableName', \$dbAdapter, null, \$resultSetPrototype);
-                },
+            $getMapperMethod = 'get' . $modelName . 'Mapper';
+            $getTableGatewayMethod = 'get' . $modelName . 'TableGateway';
+
+            $serviceFactoryMethods[] = <<<CODE
+
+    /**
+     * @return \Zend\Db\TableGateway\TableGateway
+     */
+    private function $getTableGatewayMethod()
+    {
+        \$dbAdapter = \$this->serviceLocator->get('Zend\Db\Adapter\Adapter');
+        \$resultSetPrototype = new \Zend\Db\ResultSet\ResultSet();
+        \$resultSetPrototype->setArrayObjectPrototype(new \\$this->moduleName\Model\\$modelName\\$modelName());
+        return new \Zend\Db\TableGateway\TableGateway('$tableName', \$dbAdapter, null, \$resultSetPrototype);
+    }
+
+    /**
+     * @return \\$this->moduleName\Model\\$modelName\\{$modelName}Mapper
+     */
+    public function $getMapperMethod()
+    {
+        \$tableGateway = \$this->$getTableGatewayMethod();
+        \$mapper = new \\$this->moduleName\Model\\$modelName\\{$modelName}Mapper(\$tableGateway);
+        \$mapper->setServiceLocator(\$this->serviceLocator);
+        return \$mapper;
+    }
 CODE;
         }
-        
-        $factoriesCode = implode('', $serviceFactories);
-        
-        $moduleServiceCode = <<<MODULE
-        return array(
-            'factories' => array(
-$factoriesCode
-            ),
-        );
-MODULE;
-        $this->writeFile("$this->workingDir/module/$this->moduleName/config/service.config.zk", $moduleServiceCode, false);
+
+        $factoriesCode = implode('', $serviceFactoryMethods);
+
+        $factoryCode = <<<MODULE
+<?php
+                
+namespace $this->moduleName\Model;
+
+use Zend\ServiceManager\ServiceLocatorAwareInterface;
+use Zend\ServiceManager\ServiceLocatorInterface;
+                
+class ModelFactory implements ServiceLocatorAwareInterface
+{
+
+    /**
+     * @var ServiceLocatorInterface
+     */
+    protected \$serviceLocator;
+
+    /**
+     * @var \\$this->moduleName\Model\ModelFactory
+     */
+    static protected \$instance;
+
+    /**
+     * @return \\$this->moduleName\Model\ModelFactory
+     */
+    static public function getInstance()
+    {
+        if (!self::\$instance) {
+            self::\$instance = new self;
+        }
+        return self::\$instance;
     }
-    
+                
+    private function __construct() {}
+                
+    private function __clone() {}
+$factoriesCode
+
+    public function setServiceLocator(ServiceLocatorInterface \$serviceLocator)
+    {
+        \$this->serviceLocator = \$serviceLocator;
+    }
+
+    public function getServiceLocator()
+    {
+        return \$this->serviceLocator;
+    }
+}
+MODULE;
+        $this->writeFile("$this->workingDir/module/$this->moduleName/src/$this->moduleName/Model/ModelFactory.php", $factoryCode, false, true);
+    }
+
     protected function generateMapper(Zend\Db\Metadata\Object\TableObject $table)
     {
         $modelName = $this->toCamelCase($table->getName());
 
         $primaryKey = array();
         $indexes = array();
-        
+
         foreach ($table->getConstraints() as $constraint)
         {
             /* @var $constraint Zend\Db\Metadata\Object\ConstraintObject */
-            
+
             $constraintType = $constraint->getType();
-            
+
             if ('PRIMARY KEY' === $constraintType) {
                 $primaryKey = $constraint->getColumns();
             }
-            
+
             $indexes[] = $constraint->getColumns();
         }
-        
+
         if (isset($indexes[0])) {
             $indexCode = array();
-            
+
+            $functionNames = array();
+
             foreach ($indexes as $index)
             {
                 $camelCaseColumns = $index;
-                
-                array_walk($camelCaseColumns, array($this, 'toCamelCase'));
-                
+
                 foreach ($camelCaseColumns as &$camelCaseColumn)
                 {
                     $camelCaseColumn = $this->toCamelCase($camelCaseColumn);
                 }
-                
+
                 $vars = array();
-                
+
                 foreach ($camelCaseColumns as $var)
                 {
                     $var[0] = strtolower($var[0]);
                     $vars[] = $var;
                 }
-                
+
                 $functionNameResultSet = "get{$modelName}SetBy" . implode('And', $camelCaseColumns);
                 $functionNameResult = "get{$modelName}By" . implode('And', $camelCaseColumns);
+                
+                if (isset($functionNames[$functionNameResult]) || isset($functionNames[$functionNameResultSet])) {
+                    continue;
+                }
+                
+                $functionNames[$functionNameResult] = 1;
+                $functionNames[$functionNameResultSet] = 1;
+                
                 $argList = array();
                 $varComments = array();
-                
+
                 foreach ($vars as $var)
                 {
                     $argList[] = '$' . $var;
                     $varComments[] = "     * @param mixed $$var";
-                    
                 }
                 $argList = implode(', ', $argList);
                 $varComments = implode("\n", $varComments);
-                
+
                 $where = array();
-                
+
                 foreach ($index as $offset => $indexColumn)
                 {
                     $where[] = "'$indexColumn' => $$vars[$offset]";
                 }
- 
-                $where = implode(",\n", $where);
+
+                $where = implode(",\n            ", $where);
                 $indexCode[] = <<<CODE
 
 
     /**
      *
 $varComments
-     * @return $modelName
+     * @return \\$this->moduleName\Model\\$modelName\\$modelName
      */
     public function $functionNameResult($argList)
     {
@@ -193,19 +259,19 @@ $varComments
     }
 CODE;
             }
-            
+
             $indexCode = implode('', $indexCode);
         } else {
             $indexCode = '';
         }
-        
+
         if (count($primaryKey) == 1) {
             $primaryKeyCamelCase = $this->toCamelCase($primaryKey[0]);
             $mappingCode = <<<CODE
 
     /**
      * @param int \$id
-     * @return $modelName
+     * @return \\$this->moduleName\Model\\$modelName\\$modelName
      */
     public function get$modelName(\$id)
     {
@@ -213,12 +279,12 @@ CODE;
     }
 
     /**
-     * @param $modelName \$model
+     * @param \\$this->moduleName\Model\\$modelName\\$modelName \$model
      */
     public function save$modelName($modelName \$model)
     {
         \$id = \$model->get$primaryKeyCamelCase();
-        
+
         if (!\$id) {
             \$this->tableGateway->insert(\$model->toArray());
         } else {
@@ -228,7 +294,7 @@ CODE;
 
     /**
      *
-     * @param $modelName|int \$model
+     * @param \\$this->moduleName\Model\\$modelName\\$modelName|int \$model
      */
     public function delete$modelName(\$model)
     {
@@ -244,16 +310,15 @@ CODE;
         } else {
             $mappingCode = '';
         }
-        
+
         $code = <<<TABLE
 <?php
 
-namespace $this->moduleName\Model\\$modelName; 
+namespace $this->moduleName\Model\\$modelName;
 
 use Zend\Db\TableGateway\TableGateway;
 use Zend\ServiceManager\ServiceLocatorAwareInterface;
 use Zend\ServiceManager\ServiceLocatorInterface;
-use $this->moduleName\Model\\$modelName\\$modelName;
 
 class {$modelName}Mapper implements ServiceLocatorAwareInterface
 {
@@ -285,16 +350,27 @@ $indexCode
     }
 }
 TABLE;
-        $this->writeFile("$this->workingDir/module/$this->moduleName/src/$this->moduleName/Model/$modelName/{$modelName}Mapper.php", $code);
+        $existingFile = "$this->workingDir/module/$this->moduleName/src/$this->moduleName/Model/$modelName/{$modelName}Mapper.php";
+
+        if (file_exists($existingFile)) {
+            $existingCode = file_get_contents($existingFile);
+            $startPoint = 'protected $serviceLocator;';
+            $endPoint = 'public function __construct(TableGateway $tableGateway)';
+            $customCode = substr($existingCode, strpos($existingCode, $startPoint) + strlen($startPoint), strpos($existingCode, $endPoint) - strpos($existingCode, $startPoint) - strlen($startPoint));
+
+            $code = preg_replace('#' . preg_quote($startPoint, '#') . '\s*' . preg_quote($endPoint, '#') . '#si', "$startPoint$customCode$endPoint", $code);
+        }
+
+        $this->writeFile("$this->workingDir/module/$this->moduleName/src/$this->moduleName/Model/$modelName/{$modelName}Mapper.php", $code, false, true);
     }
 
     protected function generateModel(Zend\Db\Metadata\Object\TableObject $table)
     {
         $modelName = $this->toCamelCase($table->getName());
-        
+
         $fieldsCode = array();
         $getterSetters = array();
-        
+
         foreach ($table->getColumns() as $column)
         {
             /* @var $column \Zend\Db\Metadata\Object\ColumnObject */
@@ -302,7 +378,7 @@ TABLE;
             $fieldNameCamelCase = $varName = $this->toCamelCase($fieldName);
             $varName[0] = strtolower($varName[0]);
             $defaultValue = var_export($column->getColumnDefault(), true);
-            
+
             $getterSetters[] = "
     public function get$fieldNameCamelCase()
     {
@@ -313,11 +389,11 @@ TABLE;
     {
         \$this->data['$fieldName'] = \$$varName;
     }";
-            
+
             $fieldsCode[] = "
         '$fieldName' => $defaultValue,";
         }
-        
+
         $fieldsCode = "array(" . implode('', $fieldsCode) . '
     )';
         $getterSettersCode = implode('', $getterSetters);
@@ -332,13 +408,13 @@ class $modelName
 
     protected \$data = $fieldsCode;
 $getterSettersCode
-    
+
     public function exchangeArray(\$data)
     {
         foreach (\$data as \$key => \$value)
         {
             if (!array_key_exists(\$key, \$this->data)) {
-                throw new \Exception("\$key field does not exist in " . __CLASS__);
+                continue;//throw new \Exception("\$key field does not exist in " . __CLASS__);
             }
             \$this->data[\$key] = \$value;
         }
@@ -350,28 +426,31 @@ $getterSettersCode
     }
 }
 MODEL;
-        
-        $this->writeFile("$this->workingDir/module/$this->moduleName/src/$this->moduleName/Model/$modelName/$modelName.php", $code);
+
+        $this->writeFile("$this->workingDir/module/$this->moduleName/src/$this->moduleName/Model/$modelName/$modelName.php", $code, false, true);
     }
 
     /**
-     * 
+     *
      * @param string $filename
      * @param string $contents
      * @param boolean $generatePatchIfExists
+     * @param boolean $overwrite
      */
-    protected function writeFile($filename, $contents, $generatePatchIfExists = true)
+    protected function writeFile($filename, $contents, $generatePatchIfExists = true, $overwrite = false)
     {
         $dir = dirname($filename);
-        
+
         if (!file_exists($dir)) {
             mkdir($dir, 0777, true);
         }
-        
-        if (file_exists($filename)) {
+
+        if ($overwrite) {
+            file_put_contents($filename, $contents);
+        } elseif ("service.config.zk" !== substr($filename, -17) && file_exists($filename)) {
             $zodekenFile = $filename . '.zk';
             file_put_contents($zodekenFile, $contents);
-            
+
             if ($generatePatchIfExists && 'Linux' === PHP_OS) {
                 `diff -u $filename $zodekenFile > $filename.patch`;
             }
@@ -379,9 +458,9 @@ MODEL;
             file_put_contents($filename, $contents);
         }
     }
-    
+
     /**
-     * 
+     *
      * @param string $name
      * @return string
      */
@@ -391,7 +470,7 @@ MODEL;
     }
 
     /**
-     * 
+     *
      * @param string $message
      * @return string
      */
@@ -400,5 +479,6 @@ MODEL;
         echo $message;
         return trim(fgets(STDIN));
     }
+
 }
 
