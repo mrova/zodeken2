@@ -350,18 +350,25 @@ $indexCode
     }
 }
 TABLE;
-        $existingFile = "$this->workingDir/module/$this->moduleName/src/$this->moduleName/Model/$modelName/{$modelName}Mapper.php";
+        $filename = "$this->workingDir/module/$this->moduleName/src/$this->moduleName/Model/$modelName/{$modelName}Mapper.php";
 
-        if (file_exists($existingFile)) {
-            $existingCode = file_get_contents($existingFile);
+        if (file_exists($filename)) {
+            $existingCode = file_get_contents($filename);
             $startPoint = 'protected $serviceLocator;';
             $endPoint = 'public function __construct(TableGateway $tableGateway)';
             $customCode = substr($existingCode, strpos($existingCode, $startPoint) + strlen($startPoint), strpos($existingCode, $endPoint) - strpos($existingCode, $startPoint) - strlen($startPoint));
 
             $code = preg_replace('#' . preg_quote($startPoint, '#') . '\s*' . preg_quote($endPoint, '#') . '#si', "$startPoint$customCode$endPoint", $code);
+            
+            $startPoint = "namespace $this->moduleName\Model\\$modelName;";
+            $endPoint = "class {$modelName}Mapper implements ServiceLocatorAwareInterface";
+            
+            $customCode = substr($existingCode, strpos($existingCode, $startPoint) + strlen($startPoint), strpos($existingCode, $endPoint) - strpos($existingCode, $startPoint) - strlen($startPoint));
+
+            $code = preg_replace('#' . preg_quote($startPoint, '#') . '.*' . preg_quote($endPoint, '#') . '#si', "$startPoint$customCode$endPoint", $code);
         }
 
-        $this->writeFile("$this->workingDir/module/$this->moduleName/src/$this->moduleName/Model/$modelName/{$modelName}Mapper.php", $code, false, true);
+        $this->writeFile($filename, $code, false, true);
     }
 
     protected function generateModel(Zend\Db\Metadata\Object\TableObject $table)
