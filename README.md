@@ -25,13 +25,15 @@ Usage
 ----/zodeken2.php <-- Put it here
 ```
 
-2. Run `php zodeken2.php` in terminal. It will read your db configs and asks you for the module name. The 'php' command not found? Please install the php5-cli or php-cli for Linux or add the directory of your php.exe to your system path for Windows.
+2. Configure table list for each module in zodeken2.ini file
 
-3. Enter your module name and wait.
+3. Run `php zodeken2.php` in terminal. It will read your db configs and asks you for the module name. The 'php' command not found? Please install the php5-cli or php-cli for Linux or add the directory of your php.exe to your system path for Windows.
 
-4. Models, Mappers and ModelFactory will be created in `module/YourModule/src/YourModule/Model`.
+4. Enter your module name and wait.
 
-5. Open your Module.php and alter the onBootstrap method.
+5. Models, Mappers and ModelFactory will be created in `module/YourModule/src/YourModule/Model`.
+
+6. Open your Module.php and alter the onBootstrap method.
 
 ```php
     public function onBootstrap(MvcEvent $e)
@@ -41,12 +43,12 @@ Usage
     }
 ```
     
-6. Use it in your code.
+7. Use it in your code.
 
 Get a Mapper object: `$mapper = \YourModule\Model\ModelFactory::getInstance()->getYourTableNameMapper()`
 Construct a Model:
 ```php
-$model = new \YourModule\Model\YourTableName\YourTableName;
+$model = new \YourModule\Model\YourTableName\YourTableNameModel;
 $model->setSomeField($someField);
 $model->setAnotherField($anotherField);
 ```
