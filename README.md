@@ -87,3 +87,9 @@ Important notes
 If you change your tables, Zodeken2 will search for your custom methods and copy them to the new class automatically.
 
 That's it.
+
+Coding Style
+========
+
+I don't spend much time on beautifying source code of this tool, so it looks
+very ugly. Do not follow this coding style.
