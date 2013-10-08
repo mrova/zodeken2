@@ -87,9 +87,16 @@ class Zodeken2
 
     public function run()
     {
+        $configFile = $this->workingDir . '/zodeken2.ini';
+        $configs = array();
+
         // read ini configs
-        $iniReader = new Ini();
-        $configs = $iniReader->fromFile($this->workingDir . '/zodeken2.ini');
+        if (is_readable($configFile)) {
+            $iniReader = new Ini();
+            $configs = $iniReader->fromFile($configFile);
+        } else {
+            echo "\nNotice: $configFile does not exist\n";
+        }
 
         echo "\n\nWARNING: please backup your existing code!!!\n\n";
 
